@@ -1,0 +1,173 @@
+#include <iostream>
+#include <vector>
+#include <algorithm>
+#include <cmath>
+#include <iomanip>
+using namespace std;
+
+//creating struct point which is the base for all further operations
+struct point {
+	double x, y;
+	point() {};
+	point(double x, double y) :x(x), y(y) {};
+};
+//making vector of points where we will keep input points
+vector<point> points;
+//overloading << operator in order to output the coordinates of a point easier
+ostream& operator<<(ostream& out, point pp) {
+	out << '(' << pp.x << ',' << ' ' << pp.y << ')';
+	return out;
+}
+//making vector of points where we will keep convex hull points
+vector<point> convex_hull;
+//computing orient square of parallelepiped formed by two vectors
+double oriented_area(point p0, point p1, point p2) {
+	return (p1.x - p0.x) * (p2.y - p0.y) - (p2.x - p0.x) * (p1.y - p0.y);
+}
+//creating polar sort predicate to use it in built-in sort
+class PolarSortPred {
+protected:
+	point p0; //a point regarding which sorting will be performed
+public:
+	PolarSortPred(point p0) : p0(p0) {}
+	bool operator()(const point& p1, const point& p2) {
+		double orient_square = oriented_area(p0, p1, p2);
+		//if it's not zero just check whether it's positive
+		if (orient_square != 0)
+			return orient_square > 0;
+		//otherwise we have two collinear vectors and we should calculate which one has the greatest length
+		return pow(p1.x - p0.x, 2) + pow(p1.y - p0.y, 2) < pow(p2.x - p0.x, 2) + pow(p2.y - p0.y, 2);
+	}
+	
+};
+
+//compute the area formed by three points from convex hull
+double Area(int i0, int i1, int i2) {
+	return abs(oriented_area(convex_hull[i0], convex_hull[i1], convex_hull[i2]));
+}
+
+//returns next possible index of a point in the convex hull
+int next(int i) {
+	return (i + 1) % convex_hull.size();
+}
+
+//function finding all antipodal pairs in the given convex hull
+void GetAllAntiPodalPairs(vector<pair<point, point>>& APP) {
+	//creating points p (current p-point), q (currenct q - point), pn (the last point in the convex hull)
+	//p0 (the first point), q0 (the point which makes the greatest distance from (pn, p0)-side)
+	int pn = convex_hull.size() - 1, q0;
+	int p = pn, q = next(next(p));
+	int p0 = next(pn);
+	//finding q0
+	while (Area(p, next(p), next(q)) > Area(p, next(p), q)) {
+		q = next(q);
+	}
+	q0 = q;
+	//finding all antipodal pairs while p != q0 and q != p0 (because from this pair on we'll get repeating pairs)
+	while (p != q0) {
+		//first time: after finding q0 we should increase p because (p0, q0) is the first antipodal pair
+		//other times: q is now the last point forming antipodal pair with p and at the same time is the first
+		//one to form antipodal pair with next point to p
+		p = next(p);
+		APP.push_back({ convex_hull[p], convex_hull[q] });
+		//while we can find a more distant point q' than q, we get new antipodal pairs
+		while (Area(p, next(p), next(q)) > Area(p, next(p), q)) {
+			q = next(q);
+			//there may be a situation when p is q0 and in this loop we increased q until p0
+			//so we get the (q0, p0)-pair meaning that it's time to stop the process of finding 
+			//antipodal-pairs
+			//if (make_pair(p, q) != make_pair(q0, p0)) {
+			if (make_pair(p, q) != make_pair(q0, p0) ) {
+				APP.push_back({ convex_hull[p], convex_hull[q] });
+			}
+			else {
+				return;
+			}
+		}
+		//there may be several most-distant points from side (p, next(p)) meaning we're working with parallel
+		//lines
+		if (Area(p, next(p), next(q)) == Area(p, next(p), q)) {
+			//adding pair (p, next(q)) if (p, q) != (q0, pn)
+			if (make_pair(p, q) != make_pair(q0, pn)) {
+				APP.push_back({ convex_hull[p], convex_hull[next(q)] });
+			}
+			//adding pair (next(q0), pn) if (p, q) == (q0, pn)
+			else {
+				APP.push_back(make_pair(convex_hull[next(p)], convex_hull[q]));
+			}
+		}
+	}
+}
+
+//function for building the convex hull
+void build_CH() {
+	//getting points
+	int n;
+	cout << "Input the number of points>";
+	cin >> n;
+	points.resize(n);
+	for (int i = 0; i < n; i++) {
+		cout << "Input point #" << i + 1 << ">";
+		cin >> points[i].x >> points[i].y;
+	}
+	//putting on position points[0] the point that has the minimum y-coordinate and the maximum (or minimum, optional)
+	//x-coordinate
+	for (int i = 1; i < n; i++)
+		if (points[i].y < points[0].y || (points[i].y == points[0].y && points[i].x > points[0].x))
+			swap(points[0], points[i]);
+	//sorting all the points except the first one using PolarSortPred predicate
+	sort(++points.begin(), points.end(), PolarSortPred(points[0]));
+	convex_hull.clear();
+	//adding to convex_hull vector up to 2 points
+	//if there's only one or two points in the points vector, then the next loop will not have effect
+	for (int i = 0; i < min((int)points.size(), 2); ++i)
+		convex_hull.push_back(points[i]);
+	//the process of building the convex_hull
+	//while the last two from convex_hull vector and one from points aren't left-oriented, the last one from
+	//the convex_hull vector is removed (until there remains only one point in the convex_hull vector)
+	//then add the point from the points vector to the convex_hull vector, repeat for all points in the points vector
+	for (unsigned int i = 2; i < points.size(); ++i) {
+		point t = points[i];
+		while ((convex_hull.size() > 1) && oriented_area(convex_hull[convex_hull.size() - 2], convex_hull[convex_hull.size() - 1], t) <= 0)
+			convex_hull.pop_back();
+		convex_hull.push_back(t);
+	}
+}
+
+//find square of a digit
+double square(double a) { return a * a; }
+
+//find distance between two vectors
+double dist(const point &a, const point &b) {
+	return square(a.x - b.x) + square(a.y - b.y);
+}
+
+//get the diameter of the points set
+double get_diameter() {
+	//considering three cases: when the size of the convex hull vector is 1, 2 and 3 or more
+	if (convex_hull.size() == 1)
+		return 0;
+	else if (convex_hull.size() == 2) return dist(convex_hull[0], convex_hull[1]);
+	//in this case getting all antipodal pairs and finding the diameter
+	else if (convex_hull.size() > 2) {
+		vector<pair<point, point>> APP;
+		GetAllAntiPodalPairs(APP);
+		int max_dist_index = 0;
+		cout << "The list of antipodal pairs:" << endl;
+		for (unsigned int i = 0; i < APP.size(); ++i) {
+			cout << APP[i].first << ' ' << APP[i].second << endl;
+			if (dist(APP[i].first, APP[i].second) > dist(APP[max_dist_index].first, APP[max_dist_index].second))
+				max_dist_index = i;
+		}
+		cout << "The most distant points are ";
+		cout << APP[max_dist_index].first << " and " << APP[max_dist_index].second << endl;
+		return dist(APP[max_dist_index].first, APP[max_dist_index].second);
+	}
+}
+int main() {
+	//build the convex hull vector
+	build_CH();
+	//get the diameter of the points set
+	cout << "The diameter of the points set is " << setprecision(16) << sqrt(get_diameter()) << endl;
+	return 0;
+}
